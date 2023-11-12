@@ -1,11 +1,10 @@
 /**
  * EE23B135 Kaushik G Iyer
- * 03/11/2023 + 19/11/2023
- * Version 2 ig?
+ * 03/11/2023
  * 
  * Differential equations are based on the rotation of the Earth's magnetic field
  * Compares different ODE solvers (RK45, Euler, Huen)
- * Then calculates the R^2 difference (in the theta vs t graph)
+ * Then calculates the R^2 difference  (in the theta vs phi graph)
  * 
  * References:
  *  - RK45 Code yeeted from https://web.ma.utexas.edu/CNA/cheney-kincaid/Ccode/CHP10/rk45.c
@@ -19,9 +18,7 @@
  *  - delT <double> The shortest time interval in our 'simulation'
  * 
  * Output:
- *  alpha delT Euler_R^2 Huen_R^2 (If 'PRINT_TAU' is set to false)
- *  OR
- *  tau_rk_golden tau_euler tau_huen (If 'PRINT_TAU' is set to true)
+ *  alpha delT Euler_R^2 Huen_R^2
  * 
  * NOTE: Certain values of deltaT cause the theta to get stuck below thetaMax, please use small deltaT
 */
@@ -30,15 +27,11 @@
 #include <stdlib.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
-#include <string.h>
 
 #define SAVE_PLOT 0
-#define PRINT_TAU 0
 #define RK45_PLOT_FILE_NAME "rk45.dat"
 #define EULER_PLOT_FILE_NAME "euler.dat"
 #define HUEN_PLOT_FILE_NAME "huen.dat"
-
-#define RK45_DELT 0.01f
 
 #define GAMMA 1.76E11f
 #define H 1E-10f
@@ -51,27 +44,14 @@ struct Options{
     double alpha;
 };
 
-struct Vector{
-    double* arr;
-    long long int MAX_SIZE;
-    long long int size;
-};
-
 void setOptions(int argc, char** argv, struct Options* options);
 
-double getGoldenRK45(struct Vector* vector, double t);
-
-void populatePoints(struct Vector* vector, double thetaStart, double thetaStop, double delT, double alpha, void odeSolver(double f(double, double, double), double h, double *x, double y, double alpha));
 void savePlot(struct Options options, char* fileName, void odeSolver(double f(double, double, double), double h, double *x, double y, double alpha));
 
 double thetaDifferential(double theta, double _phi, double alpha);
 double phiDifferential(double _phi, double theta, double alpha);
 
-struct Vector* VEC__create(long long int max_size);
-void VEC__delete(struct Vector* vector);
-void VEC__append(struct Vector* vector, double value);
-double VEC__sum(struct Vector* vector);
-
+// void rk45(double f(double, double), double h, double *x, double alpha, double *epsilon);
 void rk45(double f(double, double, double), double h, double *x, double y, double alpha);
 void euler(double f(double, double, double), double h, double *x, double y, double alpha);
 void huen(double f(double, double, double), double h, double *x, double y, double alpha);
@@ -80,87 +60,67 @@ void huen(double f(double, double, double), double h, double *x, double y, doubl
 void main(int argc, char** argv)
 {
     struct Options options;
-    setOptions(argc, argv, &options);
-
-    struct Vector* rk45Points = VEC__create(1000); // 1000 feels like a good starting size :)
-    populatePoints(rk45Points, options.thetaStart, options.thetaStop, RK45_DELT, options.alpha, rk45);
-    struct Vector* eulerPoints = VEC__create(1000); // 1000 feels like a good starting size :)
-    populatePoints(eulerPoints, options.thetaStart, options.thetaStop, options.delT, options.alpha, euler);
-    struct Vector* huenPoints = VEC__create(1000); // 1000 feels like a good starting size :)
-    populatePoints(huenPoints, options.thetaStart, options.thetaStop, options.delT, options.alpha, huen);
-
+    setOptions(argc, argv, &options);   
+    
     if (SAVE_PLOT){
-        // The save plot function also finds the value of phi (Which is not done by the populatePoints function)
-        // Additional note, the rk45 saved is of the 'golden' delT
-        double tmp = options.delT;
-        options.delT = RK45_DELT;
         savePlot(options, RK45_PLOT_FILE_NAME, rk45);
-        options.delT = tmp;
         savePlot(options, EULER_PLOT_FILE_NAME, euler);
         savePlot(options, HUEN_PLOT_FILE_NAME, huen);
     }
 
-    double eulerMean = VEC__sum(eulerPoints) / eulerPoints->size;
-    double huenMean = VEC__sum(huenPoints) / huenPoints->size;
+    double thetaRk, thetaEuler, thetaHuen;
 
-    double eulerTSS = 0;
-    double eulerRSS = 0;
-    for (long long int i = 0; i < eulerPoints->size; i++){
-        eulerTSS += pow(eulerPoints->arr[i] - eulerMean, 2); // TSS = sum[ (yi - ymean)^2 ]
-        eulerRSS += pow(eulerPoints->arr[i] - getGoldenRK45(rk45Points, i * options.delT), 2); // RSS = sum[ (yi - f(ti))^2 ]
-    }
-    double huenTSS = 0;
-    double huenRSS = 0;
-    for (long long int i = 0; i < huenPoints->size; i++){
-        huenTSS += pow(huenPoints->arr[i] - huenMean, 2); // TSS = sum[ (yi - ymean)^2 ]
-        huenRSS += pow(huenPoints->arr[i] - getGoldenRK45(rk45Points, i * options.delT), 2); // RSS = sum[ (yi - f(ti))^2 ]
+    thetaRk = thetaEuler = thetaHuen = options.thetaStart;
+    
+    double RSS_Euler = 0; // The residual^2 for initial point is 0 only
+    double RSS_Huen = 0; // The residual^2 for initial point is 0 only
+    
+    long long int count = 1; // Counts the number of points we are considering (Set to 1 as the initial point is also counted)
+
+    double eulerMean = thetaEuler; // Initially we find the sum of all thetas then we divide by count later (Used in TSS)
+    double huenMean = thetaHuen; // Initially we find the sum of all thetas then we divide by count later (Used in TSS)
+    
+    // NOTE: Since phi does not affect theta v t relation, we may just ignore it :)
+    // Keep going until all the thetas reach thetaStop
+    while(thetaRk < options.thetaStop || thetaEuler < options.thetaStop || thetaHuen < options.thetaStop)
+    {
+        rk45(thetaDifferential, options.delT, &thetaRk, 0, options.alpha);
+        euler(thetaDifferential, options.delT, &thetaEuler, 0, options.alpha);
+        huen(thetaDifferential, options.delT, &thetaHuen, 0, options.alpha);
+        
+        RSS_Euler += pow(thetaEuler - thetaRk, 2);
+        RSS_Huen += pow(thetaHuen - thetaRk, 2);
+        
+        eulerMean += thetaEuler;
+        huenMean += thetaHuen;
+
+        count++;
     }
 
-    double eulerR2 = 1 - (eulerRSS / eulerTSS);
-    double huenR2 = 1 - (huenRSS / huenTSS);
+    eulerMean = eulerMean / count;
+    huenMean = huenMean / count;
 
-    if (PRINT_TAU){
-        printf("%f %f %f %f\n", options.alpha, (rk45Points->size - 1) * RK45_DELT, (eulerPoints->size - 1) * options.delT, (huenPoints->size - 1) * options.delT);
-    }
-    else{
-        // The default output specified in the assignment
-        printf("%f %f %f %f\n", options.alpha, options.delT, eulerR2, huenR2);
+    // Reset the loop again
+    thetaRk = thetaEuler = thetaHuen = options.thetaStart;
+    
+    double TSS_Euler = pow(thetaEuler - eulerMean, 2);
+    double TSS_Huen = pow(thetaHuen - huenMean, 2);
+
+    while(thetaRk < options.thetaStop || thetaEuler < options.thetaStop || thetaHuen < options.thetaStop)
+    {
+        rk45(thetaDifferential, options.delT, &thetaRk, 0, options.alpha);
+        euler(thetaDifferential, options.delT, &thetaEuler, 0, options.alpha);
+        huen(thetaDifferential, options.delT, &thetaHuen, 0, options.alpha);
+        
+        TSS_Euler += pow(thetaEuler - eulerMean, 2);
+        TSS_Huen += pow(thetaHuen - huenMean, 2);
     }
 
-    VEC__delete(rk45Points);
-    VEC__delete(eulerPoints);
-    VEC__delete(huenPoints);
-}
+    // R^2 = 1 - (RSS/TSS)
+    double eulerR2 = 1 - (RSS_Euler / TSS_Euler);
+    double huenR2 = 1 - (RSS_Huen / TSS_Huen);
 
-/**
- * Gets the value of the 'golden' rk45 function at a given t
- * 
- * NOTE: We linearly interpolate to find the value of the function if we can't find the value
-*/
-double getGoldenRK45(struct Vector* points, double t){
-    int i = (t / RK45_DELT);
-    if (i + 1 >= points->size){
-        // I assume that after theta reaches theta stop, it remains constant
-        return points->arr[points->size - 1];
-    }
-    double lvalue = points->arr[i];   
-    double rvalue = points->arr[i + 1];
-    // // Just linear interpolation
-    return lvalue + ((t - (RK45_DELT*i)) * (rvalue - lvalue)/RK45_DELT);
-}
-
-/**
- * Stores the values of theta using the ode
- * NOTE: We consider phi differential also just in case the user wants to use non zero Hk :)
-*/
-void populatePoints(struct Vector* vector, double thetaStart, double thetaStop, double delT, double alpha, void odeSolver(double f(double, double, double), double h, double *x, double y, double alpha)){
-    double theta = thetaStart;
-    VEC__append(vector, theta);
-    while(theta < thetaStop){
-        // NOTE: theta is independant of phi, therefor we don't need to update phi here :)
-        odeSolver(thetaDifferential, delT, &theta, 0, alpha);
-        VEC__append(vector, theta);
-    }
+    printf("%f %f %f %f\n", options.alpha, options.delT, eulerR2, huenR2);
 }
 
 /**
@@ -191,62 +151,6 @@ void savePlot(struct Options options, char* fileName, void odeSolver(double f(do
 }
 
 /**
- * Allocates memory and sets the initial values for your vector :)
- * NOTE: You must free your vector (call VEC__delete)
-*/
-struct Vector* VEC__create(long long int max_size){
-    struct Vector* vec = malloc(sizeof(struct Vector));
-    vec->arr = malloc(max_size * sizeof(double));
-    if (vec->arr == NULL){
-        fprintf(stderr, "ERROR! Could not allocate memory for vector vro\n");
-        abort();
-    }
-    vec->MAX_SIZE = max_size;
-    vec->size = 0;
-    return vec;
-}
-
-/**
- * Frees your vector :)
-*/
-void VEC__delete(struct Vector* vector){
-    free(vector->arr);
-    free(vector);
-}
-
-/**
- * Appends an item to our vector (Grows it if required)
-*/
-void VEC__append(struct Vector* vector, double value){
-    if (vector->size == vector->MAX_SIZE){
-        // Grow it by a factor of 2
-        double* grown_arr = malloc(vector->MAX_SIZE * 2 * sizeof(double));
-        if (grown_arr == NULL){
-            fprintf(stderr, "ERROR! Could not allocate memory for vector vro\n");
-            abort();
-        }
-        memcpy(grown_arr, vector->arr, vector->MAX_SIZE * sizeof(double));
-        free(vector->arr);
-        vector->arr = grown_arr;
-        vector->MAX_SIZE = vector->MAX_SIZE * 2;
-    }
-
-    vector->arr[vector->size] = value;
-    vector->size++;
-}
-
-/**
- * Finds the sum of all elements in the vector
-*/
-double VEC__sum(struct Vector* vector){
-    double sum = 0;
-    for (long long int i = 0; i < vector->size; i++){
-        sum += vector->arr[i];
-    }
-    return sum;
-}
-
-/**
  * This method was taught in class
  * x(i + 1) = x(i) +x '(i) * h
 */
@@ -263,7 +167,6 @@ void huen(double f(double, double, double), double h, double *x, double y, doubl
     double xGuess = *x + f(*x, y, alpha) * h;
     *x += (f(*x, y, alpha) +  f(xGuess, y, alpha)) * h / 2;
 }
-
 /**
  * Refer to page 5 of https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=875251
 */

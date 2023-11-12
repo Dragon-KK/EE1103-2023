@@ -1,0 +1,1 @@
+for i in $(seq 0.001 0.005 0.5); do ./a.out 0.001 3.1414 0.2 $i ; done > RSquareDelT.txt

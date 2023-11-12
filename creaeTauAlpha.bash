@@ -1,0 +1,1 @@
+for i in $(seq 0.001 0.001 0.2); do ./a.out 0.174533 2.96706 $i 0.01; done > TauAlpha.txt
