@@ -1,0 +1,14 @@
+# EE23B135 Kaushik G Iyer
+# 14/11/2023
+# Plots hem(i) vs i and [hem(i) / hem(i+1)] vs i in two different axes
+# Stores the final plot result to ee23b135_hem.jpg
+
+set y2tics nomirror;
+set title "Some Statistics on the Hemachandra Sequence";
+set xlabel "i";
+set ylabel "hem(i)";
+set y2label "hem(i) / hem(i+1)";
+set label "Ratio tends to 0.6180339" at graph 0.5, graph 0.6;
+set term jpeg size 1280, 1280 font "Arial,20";
+set output "ee23b135_hem.jpg";
+plot "ee23b135_hem.txt" u 1:2 axis x1y1 title "ival vs i" with lines, "ee23b135_hem.txt" u 1:3 axis x1y2 with lines title "ratio vs i";
