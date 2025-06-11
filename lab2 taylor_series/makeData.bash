@@ -1,0 +1,1 @@
+for x in $(seq 0.0 0.01 10.0); do echo -n $x,; ./a.out 8 $x | awk -F, '{print $2}'; done > data.txt

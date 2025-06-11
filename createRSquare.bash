@@ -1,1 +1,0 @@
-for i in $(seq 0.2 0.01 1.5); do ./a.out 100 $i; done
